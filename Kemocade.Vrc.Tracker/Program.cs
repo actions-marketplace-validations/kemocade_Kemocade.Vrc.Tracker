@@ -71,7 +71,7 @@ try
 
         if (currentUser == null)
         {
-            WriteLine("Failed to validate 2FA");
+            WriteLine("Failed to validate 2FA!");
             Environment.Exit(2);
         }
     }
@@ -92,49 +92,45 @@ try
         .ToArray();
     WriteLine($"Got {groupRoles.Length} Group Roles");
 
-    // Get group bans
-    WriteLine("Getting Group Bans...");
-
-    List<GroupMember> groupBansList = new();
-    /*List<GroupMember> groupBansList = groupsApi.GetGroupBans(groupId);
-    WriteLine(groupBansList == null);*/
-    GroupMember[] groupBans = groupBansList
-        .OrderBy(gm => gm.User.DisplayName)
-        .ToArray();
-    WriteLine($"Got {groupBans.Length} Group Bans");
-
     // Get group members
     WriteLine("Getting Group Members...");
     List<GroupMember> groupMembers = new();
-    GroupMyMember me = group.MyMember;
-    if (me != null)
+
+    // Get self and ensure self is in group
+    GroupMyMember self = group.MyMember;
+    if (self == null)
     {
-        groupMembers.Add
-        (
-            new
-            (
-                me.Id,
-                me.GroupId,
-                me.UserId,
-                me.IsRepresenting,
-                new (currentUser.Id, currentUser.DisplayName),
-                me.RoleIds,
-                me.JoinedAt,
-                me.MembershipStatus,
-                me.Visibility,
-                me.IsSubscribedToAnnouncements
-            )
-        );
+        WriteLine("User must be a member of the group!");
+        Environment.Exit(2);
     }
-    int addCount = 0;
-    while (groupMembers.Count < memberCount)
+
+    // Get non-self group members and add to group members list
+    while (groupMembers.Count < memberCount - 1)
     {
-        List<GroupMember> added = groupsApi.GetGroupMembers(groupId, 100, addCount, 0);
-        addCount += added.Count;
-        groupMembers.AddRange(added);
+        groupMembers.AddRange
+            (groupsApi.GetGroupMembers(groupId, 100, groupMembers.Count, 0));
         WriteLine(groupMembers.Count);
         await Task.Delay(1000);
     }
+
+    // Add self to group member list
+    groupMembers.Add
+    (
+        new
+        (
+            self.Id,
+            self.GroupId,
+            self.UserId,
+            self.IsRepresenting,
+            new(currentUser.Id, currentUser.DisplayName),
+            self.RoleIds,
+            self.JoinedAt,
+            self.MembershipStatus,
+            self.Visibility,
+            self.IsSubscribedToAnnouncements
+        )
+    );
+
     groupMembers = groupMembers
         .OrderBy(gm => gm.User.DisplayName)
         .ToList();
@@ -156,17 +152,6 @@ try
                         .Where(gmi => gmi.gm.RoleIds.Contains(gr.Id))
                         .Select(gmi => gmi.i)
                         .ToArray()
-                }
-            )
-            .ToArray(),
-        Bans = groupBans
-            .Select
-            (
-                gb =>
-                new TrackedGroupBan
-                {
-                    Id = gb.Id,
-                    Name = gb.User.DisplayName
                 }
             )
             .ToArray(),
